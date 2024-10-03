@@ -54,8 +54,17 @@ Follow these steps to set up PDF2Audio on your local machine using Conda:
    ```
    OPENAI_API_KEY=your_api_key_here
    ```
+## Running the App as a microservice using FastAPI (localhost)
 
-## Running the App
+to run PDF2Pod microservice:
+
+Run this command in bash terminal
+
+```
+uvicorn app.main:app --reload
+```
+
+## Running the App (GRADIO app from original repo)
 
 To run the PDF2Audio app:
 
