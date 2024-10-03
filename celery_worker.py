@@ -1,4 +1,4 @@
-from main import celery_app
+from tasks.celery_app import celery_app
 
 # Start the Celery worker
 if __name__ == "__main__":
