@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List
 import uuid
 from utils.pdf_utils import extract_text_from_pdf
-from tasks import validate_and_generate_audio_task
+from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task
 from celery import Celery
 from celery.result import AsyncResult
 
@@ -107,12 +107,25 @@ async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks
         return {"task_id": task.id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
 
-# Endpoint to check the status of a Celery task
+# Endpoint to process PDFs and generate dialogue transcript
+@app.post("/pdf-to-dialogue-transcript/", response_model=PDFResponse)
+async def pdf_to_dialogue_transcript(request: PDFRequest, background_tasks: BackgroundTasks):
+    try:
+        # Enqueue the Celery task for dialogue generation
+        task = generate_dialogue_only_task.apply_async(args=[request.files])
+        
+        # Return the task ID to the client
+        return {"task_id": task.id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Combined endpoint to check the status of any Celery task
 @app.get("/task-status/{task_id}")
 async def get_task_status(task_id: str):
-    task_result = AsyncResult(task_id, app=validate_and_generate_audio_task)
+    task_result = AsyncResult(task_id, app=celery_app)
+    
+    # Check the state of the task
     if task_result.state == 'PENDING':
         return {"status": "Pending"}
     elif task_result.state == 'SUCCESS':

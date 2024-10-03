@@ -1,6 +1,5 @@
 import os
 import io
-from utils.llm_utils import get_mp3, conditional_llm
 import concurrent.futures as cf
 from pathlib import Path
 import tempfile
@@ -40,7 +39,7 @@ def get_mp3(
     >>>     f.write(audio_data)
     '''
     
-    client = OpenAI( api_key=api_key or os.getenv("OPENAI_API_KEY"),)
+    client = OpenAI( api_key=api_key or os.getenv("OPENAI_API_KEY"),  )
 
     with client.audio.speech.with_streaming_response.create(
         model=audio_model,
@@ -58,6 +57,13 @@ def conditional_llm(model, api_base=None, api_key=None):
     Conditionally apply the @llm decorator based on the api_base parameter.
     If api_base is provided, it applies the @llm decorator with api_base.
     Otherwise, it applies the @llm decorator without api_base.
+
+    In other words: llm(model=model, api_key=api_key)(func) is executed and returned...
+
+    Args:
+        model (str) : string describing the model name e.g. "o1-preview-2024-09-12"
+        api_base:
+        api_key: (.env) variable from os.getenv("OPENAI_API_KEY")
     """
     def decorator(func):
         if api_base:
