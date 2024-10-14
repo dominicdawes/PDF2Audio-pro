@@ -1,11 +1,13 @@
 # This file contains relevant audio proocessing and AI audio api function calls
 
 import os
+import json
 import io
 import glob
 import time
 import logging
 import tempfile
+import requests
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import concurrent.futures as cf
@@ -15,6 +17,10 @@ from pydantic import BaseModel, ValidationError
 from tempfile import NamedTemporaryFile
 from typing import List, Literal
 from tenacity import retry, retry_if_exception_type
+from dotenv import load_dotenv  # Import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +35,7 @@ class Dialogue(BaseModel):
 def generate_audio(
     files: list,
     openai_api_key: str = None,
-    text_model: str = "o1-preview-2024-09-12",
+    text_model: str = "gpt-4o-mini",
     audio_model: str = "tts-1",
     speaker_1_voice: str = "alloy",
     speaker_2_voice: str = "echo",
@@ -55,6 +61,7 @@ def generate_audio(
         audio_model (str, optional): Audio model for text-to-speech conversion.
         speaker_1_voice (str, optional): Voice for speaker 1.
         speaker_2_voice (str, optional): Voice for speaker 2.
+        original_text (str): is the extracted pdf (or OCR) data
         ... (other args)
 
     Returns:
@@ -70,13 +77,33 @@ def generate_audio(
     if not combined_text:
         for file in files:
             try:
-                with Path(file).open("rb") as f:
+                # Check if file is a URL and download it
+                if file.startswith('http://') or file.startswith('https://'):
+                    response = requests.get(file)
+                    response.raise_for_status()  # Raise an error for bad responses
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    file_path = temp_file.name
+                    print('temp pdf file downloaded :)')
+                else:
+                    # Treat as a local file
+                    file_path = file
+
+                # Read the PDF content
+                with open(file_path, "rb") as f:
                     reader = PdfReader(f)
-                    text = "\n\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                    # Use a fallback for None values when extracting text
+                    text = "\n\n".join([page.extract_text() or '' for page in reader.pages])
                     combined_text += text + "\n\n"
+
+                # Remove the temporary file if it was a downloaded URL
+                if file.startswith('http://') or file.startswith('https://'):
+                    Path(file_path).unlink()
+
             except Exception as e:
                 logger.error(f"Error reading PDF file '{file}': {e}")
-                raise ValueError(f"Error extracting text from PDF: {e}")
+                return {"dialogue_text": None, "error": f"Error extracting text from PDF: {e}"}
 
     # Configure the LLM based on selected model and api_base
     @retry(retry=retry_if_exception_type(ValidationError))
@@ -122,11 +149,15 @@ def generate_audio(
         """
 
     instruction_improve = 'Based on the original text, please generate an improved version of the dialogue by incorporating the edits, comments and feedback.'
-    edited_transcript_processed = "\nPreviously generated edited transcript, with specific edits and comments that I want you to carefully address:\n"+"<edited_transcript>\n"+edited_transcript+"</edited_transcript>" if edited_transcript !="" else ""
-    user_feedback_processed = "\nOverall user feedback:\n\n"+user_feedback if user_feedback !="" else ""
 
-    if edited_transcript_processed.strip()!='' or user_feedback_processed.strip()!='':
-        user_feedback_processed="<requested_improvements>"+user_feedback_processed+"\n\n"+instruction_improve+"</requested_improvements>" 
+    # Ensure edited_transcript and user_feedback are not None before concatenating
+    edited_transcript_processed = "\nPreviously generated edited transcript, with specific edits and comments that I want you to carefully address:\n" + \
+        "<edited_transcript>\n" + (edited_transcript or '') + "</edited_transcript>" if edited_transcript else ""
+
+    user_feedback_processed = "\nOverall user feedback:\n\n" + (user_feedback or '')
+
+    if edited_transcript_processed.strip() != '' or user_feedback_processed.strip() != '':
+        user_feedback_processed = "<requested_improvements>" + user_feedback_processed + "\n\n" + instruction_improve + "</requested_improvements>"
     
     if debug:
         logger.info (edited_transcript_processed)
@@ -166,31 +197,29 @@ def generate_audio(
 
     logger.info(f"Generated {characters} characters of audio")
 
-    # Use a temporary directory
-    temporary_directory = tempfile.gettempdir()
-    os.makedirs(temporary_directory, exist_ok=True)
+    # Ensure _temp directory exists in the root of the project
+    temp_dir = os.path.join(os.getcwd(), "_temp")
+    os.makedirs(temp_dir, exist_ok=True)
 
-    # Create a temporary file to store the audio
-    temporary_file = NamedTemporaryFile(
-        dir=temporary_directory,
-        delete=False,
-        suffix=".mp3",
-    )
-    temporary_file.write(audio)
-    temporary_file.close()
+    # Create a file path for the audio in the _temp directory
+    audio_file_path = os.path.join(temp_dir, f"audio_{int(time.time())}.mp3")
 
-    # Clean up old files in the temporary directory
-    for file in glob.glob(f"{temporary_directory}/*.mp3"):
+    # Write the audio to the file
+    with open(audio_file_path, "wb") as audio_file:
+        audio_file.write(audio)
+
+    # Clean up old files in the _temp directory that are older than 24 hours
+    for file in glob.glob(f"{temp_dir}/*.mp3"):
         if os.path.isfile(file) and time.time() - os.path.getmtime(file) > 24 * 60 * 60:
             os.remove(file)
 
-    return temporary_file.name, transcript, combined_text
+    return audio_file_path, transcript, combined_text
 
 
-def generate_only_dialogue(
+def generate_only_dialogue_text(
     files: list,
     openai_api_key: str = None,
-    text_model: str = "o1-preview-2024-09-12",
+    text_model: str = "gpt-4o-mini",
     audio_model: str = "tts-1",
     speaker_1_voice: str = "alloy",
     speaker_2_voice: str = "echo",
@@ -206,7 +235,7 @@ def generate_only_dialogue(
     debug = False,
 ) -> tuple:
     '''
-    Generate audio from a list of PDF files using an LLM and text-to-speech models.
+    Generate text ONLY from a list of PDF files using an LLM models.
 
 
     Args:
@@ -223,21 +252,43 @@ def generate_only_dialogue(
     '''
     # Validate API Key
     if not os.getenv("OPENAI_API_KEY") and not openai_api_key:
-        raise ValueError("OpenAI API key is required")
+        print(os.getenv("OPENAI_API_KEY"))
+        raise ValueError("OpenAI API key is required!!")
 
     combined_text = original_text or ""
 
     # Extract text from PDF files if original_text is not provided
+    # If there's no original text, extract it from the uploaded files or URLs
     if not combined_text:
         for file in files:
             try:
-                with Path(file).open("rb") as f:
+                # Check if file is a URL and download it
+                if file.startswith('http://') or file.startswith('https://'):
+                    response = requests.get(file)
+                    response.raise_for_status()  # Raise an error for bad responses
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    file_path = temp_file.name
+                    print('temp pdf file downloaded :)')
+                else:
+                    # Treat as a local file
+                    file_path = file
+
+                # Read the PDF content
+                with open(file_path, "rb") as f:
                     reader = PdfReader(f)
-                    text = "\n\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                    # Use a fallback for None values when extracting text
+                    text = "\n\n".join([page.extract_text() or '' for page in reader.pages])
                     combined_text += text + "\n\n"
+
+                # Remove the temporary file if it was a downloaded URL
+                if file.startswith('http://') or file.startswith('https://'):
+                    Path(file_path).unlink()
+
             except Exception as e:
                 logger.error(f"Error reading PDF file '{file}': {e}")
-                raise ValueError(f"Error extracting text from PDF: {e}")
+                return {"dialogue_text": None, "error": f"Error extracting text from PDF: {e}"}
 
     # Configure the LLM based on selected model and api_base
     @retry(retry=retry_if_exception_type(ValidationError))
@@ -283,11 +334,15 @@ def generate_only_dialogue(
         """
 
     instruction_improve = 'Based on the original text, please generate an improved version of the dialogue by incorporating the edits, comments and feedback.'
-    edited_transcript_processed = "\nPreviously generated edited transcript, with specific edits and comments that I want you to carefully address:\n"+"<edited_transcript>\n"+edited_transcript+"</edited_transcript>" if edited_transcript !="" else ""
-    user_feedback_processed = "\nOverall user feedback:\n\n"+user_feedback if user_feedback !="" else ""
 
-    if edited_transcript_processed.strip()!='' or user_feedback_processed.strip()!='':
-        user_feedback_processed="<requested_improvements>"+user_feedback_processed+"\n\n"+instruction_improve+"</requested_improvements>" 
+    # Ensure edited_transcript and user_feedback are not None before concatenating
+    edited_transcript_processed = "\nPreviously generated edited transcript, with specific edits and comments that I want you to carefully address:\n" + \
+        "<edited_transcript>\n" + (edited_transcript or '') + "</edited_transcript>" if edited_transcript else ""
+
+    user_feedback_processed = "\nOverall user feedback:\n\n" + (user_feedback or '')
+
+    if edited_transcript_processed.strip() != '' or user_feedback_processed.strip() != '':
+        user_feedback_processed = "<requested_improvements>" + user_feedback_processed + "\n\n" + instruction_improve + "</requested_improvements>"
     
     if debug:
         logger.info (edited_transcript_processed)
@@ -305,5 +360,16 @@ def generate_only_dialogue(
         user_feedback=user_feedback_processed
     )
 
+    # DEBUG: save the llm output to temp folder to see the full output
+    temp_dir = os.path.join(os.getcwd(), "_temp")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Path to the output file in the _temp/ directory
+    output_file_path = os.path.join(temp_dir, "llm_output.txt")
+
+    # Dump the output to a text file in the _temp/ directory
+    with open(output_file_path, "w") as file:
+        json.dump(llm_output.model_dump(), file, indent=4)
+
     # Return the text dialogue as a string
-    return llm_output
+    return llm_output.model_dump()  # Use model_dump instead of dict()

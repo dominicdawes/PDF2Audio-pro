@@ -6,4 +6,4 @@ venv/
 .vscode/
 
 # Additional dirs to ignore
-/temp_data/*
+_temp/*

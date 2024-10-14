@@ -1,29 +1,29 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from datetime import datetime
 from typing import List
 import uuid
 from utils.pdf_utils import extract_text_from_pdf
 from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task
-from celery import Celery
+from tasks.generate_tasks import addition_task
 from celery.result import AsyncResult
 
 
 
 # Init fast api app
 app = FastAPI()
-celery_app = Celery('tasks', broker='redis://localhost:6379/0')
+# celery_app = Celery('tasks', broker='redis://localhost:6379/0')
 
 
-
-# TODO: revisit this to make sure I allow CORS in production
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Use a specific domain in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+## TODO: revisit this to make sure I allow CORS in production
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # Use a specific domain in production
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # ======== PYDANTIC MODELS ======== #
 
@@ -43,6 +43,10 @@ class PDFExtractResponse(BaseModel):
 class PDFExtractBatchResponse(BaseModel):
     results: List[PDFExtractResponse]
 
+# [SANITY CHECK] Request model for addition sanity
+class AdditionRequest(BaseModel):
+    x: int
+    y: int
 
 # Pydantic model for the request body
 class PDFRequest(BaseModel):
@@ -58,7 +62,7 @@ class PDFResponse(BaseModel):
 # Root endpoint
 @app.get("/")
 async def root():
-    return {"success": "Hello Server"}
+    return {"success": "Hello Server PodPro"}
 
 # Endpoint for capturing PDF info (sanity check endpoint)
 @app.get("/pdf_capture", response_model=PDFCaptureResponse)
@@ -96,6 +100,20 @@ async def pdf_extract_batch(files: List[str]):
     
     return {"results": results}
 
+# ======= CELERY TASKS ========= #
+
+# POST endpoint for addition using Celery
+@app.post("/celery_test_addition/")
+async def celery_test_addition(request: AdditionRequest):
+    try:
+        # Enqueue the Celery task
+        task = addition_task.apply_async(args=[request.x, request.y])
+        
+        # Return the task ID to the client
+        return {"task_id": task.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Endpoint to process PDF and generate audio
 @app.post("/pdf-to-dialogue/", response_model=PDFResponse)
 async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks):
@@ -123,14 +141,42 @@ async def pdf_to_dialogue_transcript(request: PDFRequest, background_tasks: Back
 # Combined endpoint to check the status of any Celery task
 @app.get("/task-status/{task_id}")
 async def get_task_status(task_id: str):
-    task_result = AsyncResult(task_id, app=celery_app)
+
+    # TODO: ask gpt about the "name" arg
+    # task_result = AsyncResult(task_id, app=celery_app)
+    task_result = AsyncResult(task_id)
+
+    task_meta = task_result.info  # This contains the 'meta' dictionary set in `update_state`
     
+    # Get the start time from task metadata
+    start_time = task_meta.get('start_time') if task_meta else None
+    elapsed_time = None
+
+    if start_time:
+        # Calculate the elapsed time
+        start_time = datetime.fromisoformat(start_time)
+        elapsed_time = (datetime.now(datetime.timezone.utc) - start_time).total_seconds()
+
     # Check the state of the task
     if task_result.state == 'PENDING':
-        return {"status": "Pending"}
+        return {
+            "status": "Pending",
+            "elapsed_time": elapsed_time
+        }
     elif task_result.state == 'SUCCESS':
-        return {"status": "Success", "result": task_result.result}
+        return {
+            "status": "Success", 
+            "result": task_result.result,
+            "elapsed_time": elapsed_time
+        }
     elif task_result.state == 'FAILURE':
-        return {"status": "Failed", "error": str(task_result.result)}
+        return {
+            "status": "Failed", 
+            "error": str(task_result.result), 
+            "elapsed_time": elapsed_time
+        }
     else:
-        return {"status": str(task_result.state)}
+        return {
+            "status": str(task_result.state),
+            "elapsed_time": elapsed_time
+        }
