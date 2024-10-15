@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: my-fastapi-app
+    name: pdf-2-podcast-app
     env: python
     buildCommand: "pip install -r requirements.txt"
     startCommand: "uvicorn app.main:app --host 0.0.0.0 --port 10000"

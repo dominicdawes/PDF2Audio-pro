@@ -4,10 +4,14 @@
 from celery import Celery
 from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 from utils.audio_utils import generate_audio, generate_only_dialogue_text
+from utils.s3_utils import upload_to_s3, generate_presigned_url
+from utils.supabase_utils import insert_supabase_record
 from utils.instruction_templates import INSTRUCTION_TEMPLATES
 from time import sleep
 from datetime import datetime
-import boto
+import boto3
+import uuid
+
 
 
 # Simple sanity check tasks for Celery functionality
@@ -47,15 +51,33 @@ def validate_and_generate_audio_task(self, files, *args):
     try:
         # Call the generate_audio function from audio_utils
         audio_file, transcript, original_text = generate_audio(files, *args)
+
+        # Generate unique object keyh for mp3 file
+        s3_object_key = f"{uuid.uuid4()}.mp3"
+
+        # Upload to S3
+        s3_url = upload_to_s3(audio_file, s3_object_key)
+
+        # Generate a 2-hour presigned URL for the uploaded file
+        presigned_url = generate_presigned_url(s3_object_key)
+
+        # Insert into Supabase
+        insert_supabase_record(
+            podcast_name="My Podcast", 
+            s3_object_key=s3_object_key, 
+            cdn_url=s3_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
+            content_tags="AI, Technology"
+        )
+
         return {
-            "audio_file": audio_file,
+            "audio_file_url": presigned_url,                        # Changed (10/15) from audio_file --> audio-presign-url
             "transcript": transcript,
             "original_text": original_text,
             "error": None
         }
     except Exception as e:
         return {
-            "audio_file": None,
+            "audio_file_url": presigned_url,
             "transcript": None,
             "original_text": None,
             "error": str(e)

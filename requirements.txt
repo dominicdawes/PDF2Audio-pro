@@ -1,7 +1,6 @@
 gradio
 python-dotenv
 pandas
-openai
 pypdf
 loguru
 promptic
@@ -17,3 +16,9 @@ fastapi
 uvicorn
 celery
 redis 
+
+# AWS Stuff
+boto3
+
+# Supadase Stuff
+supabase 
