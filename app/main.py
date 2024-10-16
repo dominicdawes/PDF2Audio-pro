@@ -1,7 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 import uuid
 from utils.pdf_utils import extract_text_from_pdf
@@ -107,6 +107,7 @@ async def pdf_extract_batch(files: List[str]):
 async def celery_test_addition(request: AdditionRequest):
     try:
         # Enqueue the Celery task
+        print(f"API DEBUG: {[request.x, request.y]}")
         task = addition_task.apply_async(args=[request.x, request.y])
         
         # Return the task ID to the client
@@ -131,6 +132,7 @@ async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks
 async def pdf_to_dialogue_transcript(request: PDFRequest, background_tasks: BackgroundTasks):
     try:
         # Enqueue the Celery task for dialogue generation
+        print(f"API DEBUG: {request.files}")
         task = generate_dialogue_only_task.apply_async(args=[request.files])
         
         # Return the task ID to the client
@@ -141,42 +143,47 @@ async def pdf_to_dialogue_transcript(request: PDFRequest, background_tasks: Back
 # Combined endpoint to check the status of any Celery task
 @app.get("/task-status/{task_id}")
 async def get_task_status(task_id: str):
+    try:
+        task_result = AsyncResult(task_id)
 
-    # TODO: ask gpt about the "name" arg
-    # task_result = AsyncResult(task_id, app=celery_app)
-    task_result = AsyncResult(task_id)
+        # Safely retrieve task metadata, if available
+        task_meta = task_result.info if isinstance(task_result.info, dict) else {}
+        start_time_str = task_meta.get('start_time')
+        elapsed_time = None
 
-    task_meta = task_result.info  # This contains the 'meta' dictionary set in `update_state`
-    
-    # Get the start time from task metadata
-    start_time = task_meta.get('start_time') if task_meta else None
-    elapsed_time = None
+        # Calculate elapsed time if `start_time` is available
+        if start_time_str:
+            start_time = datetime.fromisoformat(start_time_str)
+            elapsed_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
-    if start_time:
-        # Calculate the elapsed time
-        start_time = datetime.fromisoformat(start_time)
-        elapsed_time = (datetime.now(datetime.timezone.utc) - start_time).total_seconds()
+        # Determine task status and return relevant data
+        if task_result.state == 'PENDING':
+            return {
+                "task_id": task_id,
+                "status": "Pending",
+                "elapsed_time": elapsed_time
+            }
+        elif task_result.state == 'SUCCESS':
+            return {
+                "task_id": task_id,
+                "status": "Success",
+                "result": task_result.result,
+                "elapsed_time": elapsed_time
+            }
+        elif task_result.state == 'FAILURE':
+            return {
+                "task_id": task_id,
+                "status": "Failed",
+                "error": str(task_result.result),
+                "elapsed_time": elapsed_time
+            }
+        else:
+            return {
+                "task_id": task_id,
+                "status": task_result.state,
+                "elapsed_time": elapsed_time
+            }
 
-    # Check the state of the task
-    if task_result.state == 'PENDING':
-        return {
-            "status": "Pending",
-            "elapsed_time": elapsed_time
-        }
-    elif task_result.state == 'SUCCESS':
-        return {
-            "status": "Success", 
-            "result": task_result.result,
-            "elapsed_time": elapsed_time
-        }
-    elif task_result.state == 'FAILURE':
-        return {
-            "status": "Failed", 
-            "error": str(task_result.result), 
-            "elapsed_time": elapsed_time
-        }
-    else:
-        return {
-            "status": str(task_result.state),
-            "elapsed_time": elapsed_time
-        }
+    except Exception as e:
+        # Handle any unexpected exceptions
+        raise HTTPException(status_code=500, detail=f"Error retrieving task status: {str(e)}")

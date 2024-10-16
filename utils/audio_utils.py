@@ -65,7 +65,7 @@ def generate_audio(
         ... (other args)
 
     Returns:
-        tuple: (temporary_file.name: (str), transcript: (List[Dict]), combined_text: (str))
+        tuple: (temporary_file_path.name: (str), transcript: (List[Dict]), combined_text: (str))
     '''
     # Validate API Key
     if not os.getenv("OPENAI_API_KEY") and not openai_api_key:

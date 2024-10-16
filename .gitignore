@@ -1,9 +1,9 @@
 # Default gitignore stuff
 __pycache__/
 *.pyc
-.env
 venv/
 .vscode/
+.env
 
 # Additional dirs to ignore
 _temp/*

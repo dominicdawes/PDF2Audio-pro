@@ -19,6 +19,7 @@ redis
 
 # AWS Stuff
 boto3
+botocore
 
 # Supadase Stuff
 supabase 
