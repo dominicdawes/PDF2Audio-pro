@@ -36,12 +36,13 @@ def concat_task(x, y):
 # === PRODUCTION CELERY TASKS === #
 
 @celery_app.task(bind=True)
-def validate_and_generate_audio_task(self, files, instructions_key='podcast', *args):
+def validate_and_generate_audio_task(self, files, metadata=None, instructions_key='podcast', *args):
     """
     Celery task to validate and generate audio podcast (.mp3) for a list of PDF files.
     
     Args:
-        files (List): list of either urls or local paths (see audio_utils.py) 
+        files (List): list of either urls or local paths (see audio_utils.py)
+        metadata (Dict): additional metadata for processing
         *args: openai_api_key, text_model, audio_model, speaker_1_voice...
     """
     # Store the start time
