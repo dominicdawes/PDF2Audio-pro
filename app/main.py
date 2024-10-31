@@ -2,7 +2,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Dict, Any
 import uuid
 from utils.pdf_utils import extract_text_from_pdf
 from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task
@@ -16,14 +16,19 @@ app = FastAPI()
 # celery_app = Celery('tasks', broker='redis://localhost:6379/0')
 
 
-## TODO: revisit this to make sure I allow CORS in production
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Use a specific domain in production
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+origins = [
+    "https://app.weweb.io",  # Replace with the actual WeWeb domain if different
+    "https://editor.weweb.io",
+    # Add other domains as needed
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ======== PYDANTIC MODELS ======== #
 
@@ -50,7 +55,9 @@ class AdditionRequest(BaseModel):
 
 # Pydantic model for the request body
 class PDFRequest(BaseModel):
+    ''' WeWeb specific pydantic struct '''
     files: List[str]  # List of URLs or file paths of the PDFs
+    metadata: Dict[str, Any]  # A dictionary for any metadata information
 
 # Pydantic model for the response
 class PDFResponse(BaseModel):
@@ -118,9 +125,10 @@ async def celery_test_addition(request: AdditionRequest):
 # Endpoint to process PDF and generate audio
 @app.post("/pdf-to-dialogue/", response_model=PDFResponse)
 async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks):
+    ''' This is the main function that is called from WeWeb '''
     try:
         # Enqueue the Celery task
-        task = validate_and_generate_audio_task.apply_async(args=[request.files])
+        task = validate_and_generate_audio_task.apply_async(args=[request.files, request.metadata])
         
         # Return the task ID to the client
         return {"task_id": task.id}
