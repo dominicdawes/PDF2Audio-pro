@@ -93,7 +93,9 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             podcast_name="My Podcast", 
             s3_object_key=s3_object_key, 
             cdn_url=s3_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
-            content_tags="AI, Technology"
+            content_tags="AI, Technology",
+            created_by_id=metadata.uploaded_by,
+            is_public=metadata.is_public,
         )
 
         return {
