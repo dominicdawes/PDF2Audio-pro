@@ -37,6 +37,7 @@ def insert_supabase_record(client, podcast_name, s3_object_key, cdn_url, content
         # Check if the response contains data
         if response.data:
             # Successful insertion
+            print("Successful Supabase row insert")
             return response.data
         else:
             # If there's no data, check for errors

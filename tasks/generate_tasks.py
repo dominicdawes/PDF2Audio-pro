@@ -86,7 +86,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         )
 
         # Generate a 2-hour presigned URL for the uploaded file
-        presigned_url = generate_presigned_url(s3_client, s3_bucket_name, s3_object_key)
+        # presigned_url = generate_presigned_url(s3_client, s3_bucket_name, s3_object_key)
 
         # Generate a CloudFront URL for the uploaded file
         cloudfront_url = get_cloudfront_url(s3_object_key)
@@ -103,14 +103,14 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         )
 
         return {
-            "presigned_url": presigned_url,                        # Changed (10/15) from audio_file --> audio-presign-url
+            "cdn_url": cloudfront_url,                        # Changed (10/15) from audio_file --> audio-presign-url
             "transcript": transcript,
             "original_text": original_text,
             "error": None
         }
     except Exception as e:
         return {
-            "presigned_url": presigned_url,
+            "cdn_url": cloudfront_url,
             "transcript": None,
             "original_text": None,
             "error": str(e)
