@@ -6,6 +6,7 @@ from tasks.celery_app import celery_app  # Import the Celery app instance (see c
 from utils.audio_utils import generate_audio, generate_only_dialogue_text
 from utils.s3_utils import upload_to_s3, generate_presigned_url, s3_client, s3_bucket_name
 from utils.supabase_utils import insert_supabase_record, supabase_client
+from utils.cloudfront_utils import get_cloudfront_url
 from utils.instruction_templates import INSTRUCTION_TEMPLATES
 from time import sleep
 from datetime import datetime, timezone
@@ -87,12 +88,15 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         # Generate a 2-hour presigned URL for the uploaded file
         presigned_url = generate_presigned_url(s3_client, s3_bucket_name, s3_object_key)
 
+        # Generate a CloudFront URL for the uploaded file
+        cloudfront_url = get_cloudfront_url(s3_object_key)
+
         # Insert into Supabase
         insert_supabase_record(
             client=supabase_client,
             podcast_name="My Podcast", 
             s3_object_key=s3_object_key, 
-            cdn_url=s3_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
+            cdn_url=cloudfront_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
             content_tags="AI, Technology",
             created_by_id=metadata.uploaded_by,
             is_public=metadata.is_public,

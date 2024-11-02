@@ -28,19 +28,6 @@ def upload_to_s3(client, file_path, s3_object_key, bucket_name=s3_bucket_name):
     except Exception as e:
         raise Exception(f"Failed to upload to S3: {e}")
 
-
-# def generate_presigned_url(client, s3_object_key, expiration=7200):
-#     """Generates a presigned URL for accessing the uploaded S3 object."""
-#     try:
-#         response = client.generate_presigned_url(
-#             'get_object',
-#             Params={'Bucket': os.getenv('AWS_S3_BUCKET_NAME'), 'Key': s3_object_key},
-#             ExpiresIn=expiration
-#         )
-#         return response
-#     except Exception as e:
-#         raise Exception(f"Failed to generate presigned URL: {e}")
-
 def generate_presigned_url(client, bucket_name, object_key, expiration=7200):
     """
     Generate a presigned URL to share an S3 object
