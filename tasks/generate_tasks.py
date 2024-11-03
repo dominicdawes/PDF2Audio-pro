@@ -3,6 +3,8 @@
 
 from celery import Celery
 import logging
+import os
+import psutil
 from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 from utils.audio_utils import generate_audio, generate_only_dialogue_text
 from utils.s3_utils import upload_to_s3, generate_presigned_url, s3_client, s3_bucket_name
@@ -48,6 +50,12 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         metadata (Dict): additional metadata for processing
         *args: openai_api_key, text_model, audio_model, speaker_1_voice...
     """
+    # === RENDER RESOURCE LOGGING === #
+    process = psutil.Process(os.getpid())
+    mem_before = process.memory_info().rss
+    logger.info(f"Starting {self.name} with args: {args}, kwargs: {kwargs}")
+    logger.info(f"Memory usage before task: {mem_before / (1024 * 1024)} MB")
+
     # Store the start time
     self.update_state(meta={'start_time': datetime.now(timezone.utc).isoformat()})
 
@@ -103,6 +111,11 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             uploaded_by=metadata.uploaded_by,
             is_public=metadata.is_public,
         )
+
+        # === RENDER RESOURCE LOGGING === #
+        mem_after = process.memory_info().rss
+        logger.info(f"Finished {self.name}")
+        logger.info(f"Memory usage after task: {mem_after / (1024 * 1024)} MB")
 
         return {
             "cdn_url": cloudfront_url,                        # Changed (10/15) from audio_file --> audio-presign-url

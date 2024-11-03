@@ -7,6 +7,7 @@ promptic
 tenacity
 PyPDF2
 # PyPDF2==3.0.1
+psutil
 
 # AI stuff
 openai
