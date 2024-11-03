@@ -2,6 +2,7 @@
 # like api calls and calls to other services. 
 
 from celery import Celery
+import logging
 from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 from utils.audio_utils import generate_audio, generate_only_dialogue_text
 from utils.s3_utils import upload_to_s3, generate_presigned_url, s3_client, s3_bucket_name
@@ -12,6 +13,7 @@ from time import sleep
 from datetime import datetime, timezone
 import uuid
 
+logger = logging.getLogger(__name__)
 
 # === Simple sanity check tasks for Celery functionality === #
 
@@ -109,12 +111,14 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             "error": None
         }
     except Exception as e:
-        return {
-            "cdn_url": cloudfront_url,
-            "transcript": None,
-            "original_text": None,
-            "error": str(e)
-        }
+        logger.exception(f"Task {self.name} failed with exception: {e}")
+        raise
+        # return {
+        #     "cdn_url": cloudfront_url,
+        #     "transcript": None,
+        #     "original_text": None,
+        #     "error": str(e)
+        # }
 
 @celery_app.task(bind=True, name='tasks.generate_tasks.generate_dialogue_only_task')
 def generate_dialogue_only_task(self, files, instructions_key='podcast', *args):
