@@ -17,12 +17,6 @@ supabase_client: Client = create_client(
 def insert_supabase_record(client, podcast_name, s3_object_key, cdn_url, content_tags, created_by_id, is_public):
     """Inserts a record into the Supabase Library table."""
     try:
-        # data = {
-        #     "podcast_name": podcast_name,
-        #     "s3_object_key": s3_object_key,
-        #     "cdn_url": cdn_url,
-        #     "content_tags": content_tags,
-        # }
         data = {
             "podcast_name": podcast_name,
             "s3_object_key": s3_object_key,
