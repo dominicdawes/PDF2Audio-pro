@@ -18,12 +18,13 @@ def insert_supabase_record(client, podcast_name, s3_object_key, cdn_url, content
     """Inserts a record into the Supabase Library table."""
     try:
         data = {
-            "podcast_name": podcast_name,
+            "podcast_title": podcast_name,
             "s3_object_key": s3_object_key,
             "cdn_url": cdn_url,
             "content_tags": content_tags,
             "uploaded_by":uploaded_by,
             "is_public": is_public,
+            "description": 'this description could be workshopped just a bit...',
         }
         # Execute the insert query
         response = client.table("media_uploads").insert(data).execute()
