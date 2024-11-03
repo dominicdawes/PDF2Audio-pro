@@ -108,7 +108,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             s3_object_key=s3_object_key, 
             cdn_url=cloudfront_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
             content_tags="AI, Technology",
-            uploaded_by=metadata.created_by_id,
+            uploaded_by=metadata.uploaded_by,
             is_public=metadata.is_public,
         )
 
