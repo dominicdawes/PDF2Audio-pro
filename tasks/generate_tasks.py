@@ -53,7 +53,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
     # === RENDER RESOURCE LOGGING === #
     process = psutil.Process(os.getpid())
     mem_before = process.memory_info().rss
-    logger.info(f"Starting {self.name} with args: {args}, kwargs: {kwargs}")
+    logger.info(f"Starting {self.name} with args: {args}")
     logger.info(f"Memory usage before task: {mem_before / (1024 * 1024)} MB")
 
     # Store the start time
