@@ -53,7 +53,7 @@ def insert_document_supabase_record(client, table_name, cdn_url, content_tags, u
     try:
         data = {
             "cdn_url": cdn_url,
-            "contenrt_tags": content_tags,
+            "content_tags": content_tags,
             "uploaded_by":uploaded_by,
         }
         # Execute the insert query
