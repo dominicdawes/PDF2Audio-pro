@@ -128,7 +128,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
                     client=supabase_client,
                     table_name="document_sources",  
                     cdn_url=cloudfront_document_url,                                         
-                    content_tags="AI, Technology",
+                    content_tags=["Fitness", "Health", "Wearables"],  # Pass content_tags as an array
                     uploaded_by=metadata['uploaded_by'],
                 )
 
@@ -164,7 +164,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             podcast_title="My Podcast", 
             cdn_url=cloudfront_podcast_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
             transcript=transcript,
-            content_tags="AI, Technology",
+            content_tags=["Fitness", "Technology"],  # Pass content_tags as an array,
             uploaded_by=metadata['uploaded_by'],
             is_public=metadata['is_public'],
             is_playlist=False,
