@@ -8,7 +8,7 @@ import psutil
 from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 from utils.audio_utils import generate_audio, generate_only_dialogue_text
 from utils.s3_utils import upload_to_s3, generate_presigned_url, s3_client, s3_bucket_name
-from utils.supabase_utils import insert_supabase_record, supabase_client
+from utils.supabase_utils import insert_document_supabase_record, insert_mp3_supabase_record, supabase_client
 from utils.cloudfront_utils import get_cloudfront_url
 from utils.instruction_templates import INSTRUCTION_TEMPLATES
 from time import sleep
@@ -40,7 +40,7 @@ def concat_task(x, y):
 
 # === PRODUCTION CELERY TASKS === #
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
 def validate_and_generate_audio_task(self, files, metadata=None, instructions_key='podcast', *args):
     """
     Celery task to validate and generate audio podcast (.mp3) for a list of PDF files.
@@ -87,17 +87,37 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
     
         ## Add sources to data bucket and CDN
         for file in files:
-            # Split the file name to get the extension
-            ext_ending = os.path.splitext(file)[1]
-            
-            # Generate a unique object key for S3 using a UUID and the file extension
-            s3_document_object_key = f"{uuid.uuid4()}{ext_ending}"
-            
-            upload_to_s3(
-                s3_client, 
-                file, 
-                s3_document_object_key
-            )
+            try:
+                # Split the file name to get the extension
+                ext_ending = os.path.splitext(file)[1]
+                
+                # Generate a unique object key for S3 using a UUID and the file extension
+                s3_document_object_key = f"{uuid.uuid4()}{ext_ending}"
+                
+                # Upload file to S3
+                upload_to_s3(
+                    s3_client, 
+                    file, 
+                    s3_document_object_key
+                )
+
+                # Generate CloudFront URL
+                cloudfront_document_url = get_cloudfront_url(s3_document_object_key)
+
+                # Insert the document source record into Supabase
+                insert_document_supabase_record(
+                    client=supabase_client,
+                    table_name="document_sources",  
+                    cdn_url=cloudfront_document_url,                                         
+                    content_tags="AI, Technology",
+                    uploaded_by=metadata['uploaded_by'],
+                )
+
+            except Exception as e:
+                # Log the error, including the file name, for debugging
+                logger.error(f"Failed to process file {file}: {e}", exc_info=True)
+                # Continue with the next file in the list
+                continue
 
         ## Add mp3 to data bucket and CDN
         # Generate unique object keyh for mp3 file
@@ -115,10 +135,9 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
 
         # Generate a CloudFront URL for the uploaded file
         cloudfront_podcast_url = get_cloudfront_url(s3_mp3_object_key)
-        cloudfront_document_url = get_cloudfront_url(s3_document_object_key)
 
         # Insert podcast into Supabase
-        insert_supabase_record(
+        insert_mp3_supabase_record(
             client=supabase_client,
             table_name="media_uploads",
             podcast_title="My Podcast", 
@@ -129,15 +148,6 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             uploaded_by=metadata['uploaded_by'],
             is_public=metadata['is_public'],
             is_playlist=False,
-        )
-
-        # Insert pdf sources into Supabase
-        insert_supabase_record(
-            client=supabase_client,
-            table_name="document_sources",  
-            cdn_url=cloudfront_document_url,                                         
-            content_tags="AI, Technology",
-            uploaded_by=metadata['uploaded_by'],
         )
 
         # === RENDER RESOURCE LOGGING === #
