@@ -5,6 +5,8 @@ from celery import Celery
 import logging
 import os
 import psutil
+import requests
+import tempfile
 from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 from utils.audio_utils import generate_audio, generate_only_dialogue_text
 from utils.s3_utils import upload_to_s3, generate_presigned_url, s3_client, s3_bucket_name
@@ -88,8 +90,21 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         ## Add sources to data bucket and CDN
         for file in files:
             try:
+                # Check if file is a URL and download it
+                if file.startswith('http://') or file.startswith('https://'):
+                    response = requests.get(file)
+                    response.raise_for_status()  # Raise an error for bad responses
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                    temp_file.write(response.content)
+                    temp_file.close()
+                    file_path = temp_file.name
+                    print('temp pdf file downloaded :)')
+                else:
+                    # Treat as a local file
+                    file_path = file
+
                 # Split the file name to get the extension
-                ext_ending = os.path.splitext(file)[1]
+                ext_ending = os.path.splitext(file_path)[1]
                 
                 # Generate a unique object key for S3 using a UUID and the file extension
                 s3_document_object_key = f"{uuid.uuid4()}{ext_ending}"
@@ -97,7 +112,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
                 # Upload file to S3
                 upload_to_s3(
                     s3_client, 
-                    file, 
+                    file_path, 
                     s3_document_object_key
                 )
 
@@ -116,8 +131,10 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             except Exception as e:
                 # Log the error, including the file name, for debugging
                 logger.error(f"Failed to process file {file}: {e}", exc_info=True)
-                # Continue with the next file in the list
-                continue
+            finally:
+                # Clean up temporary file if it was downloaded
+                if file.startswith('http://') or file.startswith('https://'):
+                    os.unlink(file_path)
 
         ## Add mp3 to data bucket and CDN
         # Generate unique object keyh for mp3 file

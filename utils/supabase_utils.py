@@ -12,17 +12,29 @@ supabase_client: Client = create_client(
     os.getenv('SUPABASE_SERVICE_ROLE_KEY')  # Ensure this key is the service role
 )
 
-def insert_mp3_supabase_record(client, table_name, podcast_name, s3_object_key, cdn_url, uploaded_by, content_tags, transcript, is_public):
+def insert_mp3_supabase_record(
+        client, 
+        table_name, 
+        podcast_title, 
+        s3_object_key, 
+        cdn_url, 
+        transcript,
+        content_tags,
+        uploaded_by, 
+        is_public,
+        is_playlist
+    ):
     """Inserts a record into the Supabase Library table."""
     try:
         data = {
-            "podcast_title": podcast_name,
+            "podcast_title": podcast_title,
             "s3_object_key": s3_object_key,
             "cdn_url": cdn_url,
             "uploaded_by":uploaded_by,
             "is_public": is_public,
             "transcript": transcript,
             "description": 'this description could be workshopped just a bit...',
+            "is_playlist": False
         }
         # Execute the insert query
         response = client.table(table_name).insert(data).execute()   
