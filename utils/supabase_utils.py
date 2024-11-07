@@ -16,7 +16,6 @@ def insert_mp3_supabase_record(
         client, 
         table_name, 
         podcast_title, 
-        s3_object_key, 
         cdn_url, 
         transcript,
         content_tags,
@@ -28,7 +27,6 @@ def insert_mp3_supabase_record(
     try:
         data = {
             "podcast_title": podcast_title,
-            "s3_object_key": s3_object_key,
             "cdn_url": cdn_url,
             "uploaded_by":uploaded_by,
             "is_public": is_public,
