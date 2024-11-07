@@ -119,6 +119,10 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
                 # Generate CloudFront URL
                 cloudfront_document_url = get_cloudfront_url(s3_document_object_key)
 
+                # check uploaded_by is not null]
+                print(metadata)
+                metadata['uploaded_by'] = metadata.get('uploaded_by') or ""
+
                 # Insert the document source record into Supabase
                 insert_document_supabase_record(
                     client=supabase_client,
@@ -130,7 +134,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
 
             except Exception as e:
                 # Log the error, including the file name, for debugging
-                logger.error(f"Failed to process file {file}: {e}", exc_info=True)
+                logger.error(f"Failed to process file {file_path}: {e}", exc_info=True)
             finally:
                 # Clean up temporary file if it was downloaded
                 if file.startswith('http://') or file.startswith('https://'):
@@ -158,7 +162,6 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             client=supabase_client,
             table_name="media_uploads",
             podcast_title="My Podcast", 
-            s3_object_key=s3_mp3_object_key, 
             cdn_url=cloudfront_podcast_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
             transcript=transcript,
             content_tags="AI, Technology",
