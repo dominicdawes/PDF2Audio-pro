@@ -14,7 +14,7 @@ supabase_client: Client = create_client(
 )
 
 
-def insert_supabase_record(client, podcast_name, s3_object_key, cdn_url, content_tags, uploaded_by, is_public):
+def insert_supabase_record(client, table_name, podcast_name, s3_object_key, cdn_url, content_tags, uploaded_by, is_public):
     """Inserts a record into the Supabase Library table."""
     try:
         data = {
@@ -27,7 +27,7 @@ def insert_supabase_record(client, podcast_name, s3_object_key, cdn_url, content
             "description": 'this description could be workshopped just a bit...',
         }
         # Execute the insert query
-        response = client.table("media_uploads").insert(data).execute()
+        response = client.table(table_name).insert(data).execute()   
         
         # Check if the response contains data
         if response.data:

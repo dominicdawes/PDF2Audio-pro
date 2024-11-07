@@ -84,32 +84,60 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
             podcast_dialog_instructions=podcast_dialog_instructions,
             *args,  # Handle any positional arguments passed via the task
         )
+    
+        ## Add sources to data bucket and CDN
+        for file in files:
+            # Split the file name to get the extension
+            ext_ending = os.path.splitext(file)[1]
+            
+            # Generate a unique object key for S3 using a UUID and the file extension
+            s3_document_object_key = f"{uuid.uuid4()}{ext_ending}"
+            
+            upload_to_s3(
+                s3_client, 
+                file, 
+                s3_document_object_key
+            )
 
+        ## Add mp3 to data bucket and CDN
         # Generate unique object keyh for mp3 file
-        s3_object_key = f"{uuid.uuid4()}.mp3"
+        s3_mp3_object_key = f"{uuid.uuid4()}.mp3"
 
         # Upload to S3
-        s3_url = upload_to_s3(
+        upload_to_s3(
             s3_client, 
             audio_file, 
-            s3_object_key
+            s3_mp3_object_key
         )
 
         # Generate a 2-hour presigned URL for the uploaded file
         # presigned_url = generate_presigned_url(s3_client, s3_bucket_name, s3_object_key)
 
         # Generate a CloudFront URL for the uploaded file
-        cloudfront_url = get_cloudfront_url(s3_object_key)
+        cloudfront_podcast_url = get_cloudfront_url(s3_mp3_object_key)
+        cloudfront_document_url = get_cloudfront_url(s3_document_object_key)
 
-        # Insert into Supabase
+        # Insert podcast into Supabase
         insert_supabase_record(
             client=supabase_client,
-            podcast_name="My Podcast", 
-            s3_object_key=s3_object_key, 
-            cdn_url=cloudfront_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
+            table_name="media_uploads",
+            podcast_title="My Podcast", 
+            s3_object_key=s3_mp3_object_key, 
+            cdn_url=cloudfront_podcast_url,                                         # pretty sure this s3_url will not work, but thats ok it needs to be an actual CDN link
+            transcript=transcript,
             content_tags="AI, Technology",
             uploaded_by=metadata['uploaded_by'],
             is_public=metadata['is_public'],
+            is_playlist=False,
+        )
+
+        # Insert pdf sources into Supabase
+        insert_supabase_record(
+            client=supabase_client,
+            table_name="document_sources",  
+            cdn_url=cloudfront_document_url,                                         
+            content_tags="AI, Technology",
+            uploaded_by=metadata['uploaded_by'],
         )
 
         # === RENDER RESOURCE LOGGING === #
@@ -118,11 +146,12 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         logger.info(f"Memory usage after task: {mem_after / (1024 * 1024)} MB")
 
         return {
-            "cdn_url": cloudfront_url,                        # Changed (10/15) from audio_file --> audio-presign-url
+            "cdn_url": cloudfront_podcast_url,                        # Changed (10/15) from audio_file --> audio-presign-url
             "transcript": transcript,
             "original_text": original_text,
             "error": None
         }
+    
     except Exception as e:
         logger.exception(f"Task {self.name} failed with exception: {e}")
         raise
