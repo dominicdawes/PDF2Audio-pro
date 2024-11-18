@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any
 import uuid
 from utils.pdf_utils import extract_text_from_pdf
-from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task
+from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task, process_pdf_task
 from tasks.generate_tasks import addition_task
+from tasks.chat_tasks import rag_chat_task
 from celery.result import AsyncResult
 
 
@@ -63,20 +64,26 @@ class PDFRequest(BaseModel):
 class PDFResponse(BaseModel):
     task_id: str
 
+# RAG Query pydantic model
+class RAGRequest(BaseModel):
+    user_id: str
+    conversation_id: str
+    query: str
+    document_ids: List[str]
 
-# ======== URL ENDPOINTS ======== #
+# ======== TEST ENDPOINTS ======== #
 
 # Root endpoint
 @app.get("/")
 async def root():
     return {"success": "Hello Server PodPro"}
 
+
 # Endpoint for capturing PDF info (sanity check endpoint)
 @app.get("/pdf_capture", response_model=PDFCaptureResponse)
 async def pdf_capture(file: str):
     unique_id = str(uuid.uuid4())  # Generate a unique UUID
     return {"uuid": unique_id, "url": file}
-
 
 # Endpoint for extracting a single PDF's content
 @app.get("/pdf_extract", response_model=PDFExtractResponse)
@@ -107,7 +114,7 @@ async def pdf_extract_batch(files: List[str]):
     
     return {"results": results}
 
-# ======= CELERY TASKS ========= #
+# ======= PDF2PODCAST CELERY TASKS ========= #
 
 # POST endpoint for addition using Celery
 @app.post("/celery_test_addition/")
@@ -127,11 +134,17 @@ async def celery_test_addition(request: AdditionRequest):
 async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks):
     ''' This is the main function that is called from WeWeb '''
     try:
-        # Enqueue the Celery task
-        task = validate_and_generate_audio_task.apply_async(args=[request.files, request.metadata])
+        # Trigger the audio generation task asynchronously... added to queue
+        audio_task = validate_and_generate_audio_task.apply_async(args=[request.files, request.metadata])
         
-        # Return the task ID to the client
-        return {"task_id": task.id}
+        # Trigger the document embedding task asynchronously... added to queue
+        embedding_task = process_pdf_task.apply_async(args=[request.files, request.metadata])
+
+        # Return the task IDs to the client
+        return {
+            "audio_task_id": audio_task.id,
+            "embedding_task_id": embedding_task.id
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -195,3 +208,32 @@ async def get_task_status(task_id: str):
     except Exception as e:
         # Handle any unexpected exceptions
         raise HTTPException(status_code=500, detail=f"Error retrieving task status: {str(e)}")
+
+# ======= RAG CELERY TASKS ========= #
+
+@app.post("/rag-chat/")
+async def rag_chat(request: RAGRequest):
+    try:
+        # Trigger the RAG task asynchronously and add it to the queue
+        task = rag_chat_task.apply_async(args=[
+            request.user_id,
+            request.conversation_id,
+            request.query,
+            request.document_ids
+        ])
+        
+        # Return the task ID to the client
+        return {"task_id": task.id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/rag-chat-status/{task_id}")
+async def get_rag_chat_status(task_id: str):
+    """Endpoint to check the status and result of the RAG chat task."""
+    result = AsyncResult(task_id)
+    if result.state == "SUCCESS":
+        return {"status": result.state, "result": result.result}
+    elif result.state == "FAILURE":
+        return {"status": result.state, "error": str(result.result)}
+    else:
+        return {"status": result.state}

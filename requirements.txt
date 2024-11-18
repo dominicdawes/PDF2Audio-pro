@@ -9,19 +9,26 @@ PyPDF2
 # PyPDF2==3.0.1
 psutil
 
-# AI stuff
+# AI dependencies
 openai
+tiktoken
 
-# RENDER.io stuff
+# RENDER.io dependencies
 fastapi
 uvicorn
 celery
 gevent==23.9.1
 redis 
 
-# AWS Stuff
+# AWS dependencies
 boto3
 botocore
 
-# Supadase Stuff
+# Supadase dependencies
 supabase 
+
+# RAG dependencies
+langchain 
+langchain-community
+langchain-openai
+

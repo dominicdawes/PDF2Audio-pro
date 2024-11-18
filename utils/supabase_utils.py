@@ -1,4 +1,5 @@
 import os
+import json
 import uuid
 import boto3
 from supabase import create_client, Client
@@ -6,6 +7,7 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
 # Initialize Supabase client
 supabase_client: Client = create_client(
     os.getenv('SUPABASE_URL'), 
@@ -63,9 +65,27 @@ def insert_document_supabase_record(client, table_name, cdn_url, content_tags, u
         if response.data:
             # Successful insertion
             print("Successful Supabase row insert")
-            return response.data
+            return response.data[0]["id"]  # Return document ID... prior version is just response.data
         else:
             # If there's no data, check for errors
             raise Exception(f"Supabase error: {response.error}")
     except Exception as e:
         raise Exception(f"Failed to insert into Supabase: {e}")
+
+def insert_vector_supabase_record(client, table_name, document_id, content, metadata, embedding):
+    response = client.table(table_name).insert({
+        "document_id": document_id,
+        "content": content,
+        "metadata": json.dumps(metadata),
+        "embedding": embedding
+    }).execute()
+    if response.error:
+        raise Exception(f"Error inserting vector record: {response.error}")
+    
+def insert_conversation_supabase_record(client, table_name, messages):
+    response = client.table(table_name).insert({
+        "conversation_id": content,
+        "message": messages,
+    }).execute()
+    if response.error:
+        raise Exception(f"Error saving messages: {response.error}")

@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 venv/
+notebooks/
 .vscode/
 .env
 
 # Additional dirs to ignore
 _temp/*
+_local/*
