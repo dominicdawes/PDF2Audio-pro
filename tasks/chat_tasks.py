@@ -1,26 +1,43 @@
-from celery import Celery, chain
+from celery import Celery, Task
+from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 import logging
 import os
-import json
-import psutil
-import requests
-import tempfile
-from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
-from utils.audio_utils import generate_audio, generate_only_dialogue_text
-from utils.s3_utils import upload_to_s3, s3_client, s3_bucket_name
-from utils.supabase_utils import insert_conversation_supabase_record, supabase_client
-from utils.cloudfront_utils import get_cloudfront_url
-from utils.instruction_templates import INSTRUCTION_TEMPLATES
-from time import sleep
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.prompts import PromptTemplate
+from supabase import create_client, Client
+from utils.supabase_utils import insert_document_supabase_record, insert_mp3_supabase_record, insert_vector_supabase_record, supabase_client
 from datetime import datetime, timezone
 import uuid
 
-# langchain dependencies
-from langchain.text_splitter import CharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.document_loaders import PyPDFLoader
+# from celery import Celery, chain
+# import logging
+# import os
+# import json
+# import psutil
+# import requests
+# import tempfile
+# from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
+# from utils.audio_utils import generate_audio, generate_only_dialogue_text
+# from utils.s3_utils import upload_to_s3, s3_client, s3_bucket_name
+# from utils.supabase_utils import insert_conversation_supabase_record, supabase_client
+# from utils.cloudfront_utils import get_cloudfront_url
+# from utils.instruction_templates import INSTRUCTION_TEMPLATES
+# from time import sleep
+# from datetime import datetime, timezone
+# import uuid
+
+# # langchain dependencies
+# from langchain.text_splitter import CharacterTextSplitter
+# from langchain_openai import OpenAIEmbeddings
+# from langchain_community.document_loaders import PyPDFLoader
 
 logger = logging.getLogger(__name__)
+
+class BaseTaskWithRetry(Task):
+    autoretry_for = (Exception,)
+    retry_backoff = True
+    retry_kwargs = {"max_retries": 5}
+    retry_jitter = True
 
 @celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
 def rag_chat_task(self, user_id, conversation_id, query, document_ids):
@@ -36,159 +53,129 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
     }
     """
     try:
-        # Step 1: Vectorize the query
+        # Step 1: Handle first-time chat session (create new conversation if needed)
+        if not conversation_id:
+            conversation_id = create_new_conversation(user_id, document_ids)
+
+        # Step 2: Vectorize the query
         embedding_model = OpenAIEmbeddings()
         query_embedding = embedding_model.embed_query(query)
-        
-        # Step 2: Fetch relevant document chunks
+
+        # Step 3: Fetch relevant document chunks
         relevant_chunks = fetch_relevant_chunks(query_embedding, document_ids)
-        
-        # Combine retrieved chunks into a single context for RAG
-        context = " ".join([chunk["content"] for chunk in relevant_chunks])
 
-        # Step 3: Generate the answer using RAG
-        answer = generate_answer(query, context)
+        # Step 4: Generate the answer using RAG
+        answer = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
 
-        # Step 4: Save query and response in message history
+        # Step 5: Save query and response in message history
         save_conversation(conversation_id, user_id, query, answer)
 
         return {"answer": answer}
     except Exception as e:
-        raise Exception(f"RAG Chat Task failed: {str(e)}")
+        logger.error(f"RAG Chat Task failed: {str(e)}", exc_info=True)
+        raise self.retry(exc=e)
 
-def fetch_relevant_chunks(query_embedding, document_ids):
-    response = supabase_client.rpc("match_document_chunks", {
-        "query_embedding": query_embedding,
-        "document_ids": document_ids
-    }).execute()
+def create_new_conversation(user_id, document_ids):
+    """
+    Create a new conversation in the `conversations` table.
+    """
+    new_conversation = {
+        "user_id": user_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "document_ids": document_ids,
+    }
+    try:
+        response = supabase_client.table("conversations").insert(new_conversation).execute()
+        return response.data[0]["id"]
+    except Exception as e:
+        logger.error(f"Error creating new conversation: {str(e)}", exc_info=True)
+        raise
 
-    if response.error:
-        raise Exception(f"Error fetching relevant chunks: {response.error}")
+def fetch_relevant_chunks(query_embedding, document_ids, match_count=3):
+    """
+    Fetch the most relevant document chunks from the Supabase vector store.
+    """
+    try:
+        response = supabase_client.rpc("match_document_chunks", {
+            "query_embedding": query_embedding,
+            "document_ids": document_ids,
+            "match_count": match_count
+        }).execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Error fetching relevant chunks: {str(e)}", exc_info=True)
+        raise
 
-    return response.data
-
-def generate_answer(query, context):
-    llm = OpenAI(model_name="text-davinci-003")  # Replace with your LLM model
-    prompt_template = PromptTemplate(
-        input_variables=["context", "query"],
-        template="Answer the question based on the context:\n\nContext:\n{context}\n\nQuestion:\n{query}\n\nAnswer:"
-    )
-    chain = LLMChain(llm=llm, prompt=prompt_template)
-    answer = chain.run({"context": context, "query": query})
-    return answer
+def generate_rag_answer(query, conversation_id, relevant_chunks, model_name, max_chat_history=10):
+    """
+    Generates the RAG answer by combining chat history, query, and relevant chunks.
+    """
+    try:
+        chat_history = fetch_chat_history(conversation_id)
+        chat_history = chat_history[-max_chat_history:]
+        formatted_history = format_chat_history(chat_history) if chat_history else ""
+        chunk_context = " ".join([chunk["content"] for chunk in relevant_chunks])
+        full_context = f"{formatted_history}\nRelevant Context:\n{chunk_context}\n\nUser Query: {query}\nAssistant:"
+        full_context = trim_context_length(full_context, query, relevant_chunks, model_name, max_tokens=127999)
+        
+        llm = ChatOpenAI(model=model_name, temperature=0.7)
+        prompt_template = PromptTemplate(input_variables=["context"], template="{context}")
+        pipeline = prompt_template | llm
+        return pipeline.invoke({"context": full_context})
+    except Exception as e:
+        logger.error(f"Error generating RAG answer: {str(e)}", exc_info=True)
+        raise
 
 def save_conversation(conversation_id, user_id, query, answer):
-    messages = [
-        {
+    """
+    Save the user's query and the RAG response to the conversation history.
+    """
+    try:
+        supabase_client.table("message").insert({
+            "user_id": user_id,
             "conversation_id": conversation_id,
             "message_role": "user",
             "message_content": query,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        },
-        {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+
+        supabase_client.table("message").insert({
+            "user_id": user_id,
             "conversation_id": conversation_id,
             "message_role": "assistant",
             "message_content": answer,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-    ]
-
-    # Insert the document source record into Supabase
-    res = insert_conversation_supabase_record(
-        client=supabase_client,
-        messaegs=messages,
-    )
-
-    response = supabase_client.table("message").insert(messages).execute()
-
-    if response.error:
-        raise Exception(f"Error saving messages: {response.error}")
-
-## OLD CODE
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
-def rag_query_task(self, files, metadata=None, instructions_key='podcast', *args):
-    """
-    Celery task to validate and generate audio podcast (.mp3) for a list of PDF files.
-    
-    Args:
-        files (List): list of either urls or local paths (see audio_utils.py)
-        metadata (Dict): additional metadata for processing {'uploaded_by':, length:, temperature:, model_choice:...}
-        *args: openai_api_key, text_model, audio_model, speaker_1_voice...
-    """
-    # === RENDER RESOURCE LOGGING === #
-    process = psutil.Process(os.getpid())
-    mem_before = process.memory_info().rss
-    logger.info(f"Starting {self.name} with args: {args}")
-    logger.info(f"Memory usage before task: {mem_before / (1024 * 1024)} MB")
-
-    # Store the start time
-    self.update_state(meta={'start_time': datetime.now(timezone.utc).isoformat()})
-
-    if not files:
-        return {"error": "Please upload at least one PDF file before generating audio."}
-    
-    # Initialize presigned_url to avoid UnboundLocalError
-    presigned_url = None
-
-    try:
-        # Extract the instructions from INSTRUCTION_TEMPLATES using the given instructions_key
-        llm_instructions = INSTRUCTION_TEMPLATES.get(instructions_key, {})
-        intro_instructions = llm_instructions.get("intro", "")
-        text_instructions = llm_instructions.get("text_instructions", "")
-        scratch_pad_instructions = llm_instructions.get("scratch_pad", "")
-        prelude_dialog = llm_instructions.get("prelude", "")
-        podcast_dialog_instructions = llm_instructions.get("dialog", "")
-
-        # Call generate_audio with default or provided arguments
-        audio_file, transcript, original_text = generate_audio(
-            files,
-            intro_instructions=intro_instructions,
-            text_instructions=text_instructions,
-            scratch_pad_instructions=scratch_pad_instructions,
-            prelude_dialog=prelude_dialog,
-            podcast_dialog_instructions=podcast_dialog_instructions,
-            *args,  # Handle any positional arguments passed via the task
-        )
-    
-        ## Add mp3 to data bucket and CDN
-        # Generate unique object keyh for mp3 file
-        s3_mp3_object_key = f"{uuid.uuid4()}.mp3"
-
-        # Upload to AWS S3 Bucket
-        upload_to_s3(
-            s3_client, 
-            audio_file, 
-            s3_mp3_object_key
-        )
-
-        # Generate a CloudFront URL for the uploaded file
-        cloudfront_podcast_url = get_cloudfront_url(s3_mp3_object_key)
-
-        # Insert podcast into Supabase
-        insert_mp3_supabase_record(
-            client=supabase_client,
-            table_name="media_uploads",
-            podcast_title="My Podcast", 
-            cdn_url=cloudfront_podcast_url,                                        
-            transcript=transcript,
-            content_tags=["Fitness", "Technology"],  # Pass content_tags as an array,
-            uploaded_by=metadata['uploaded_by'],
-            is_public=metadata['is_public'],
-            is_playlist=False,
-        )
-
-        # === RENDER RESOURCE LOGGING === #
-        mem_after = process.memory_info().rss
-        logger.info(f"Finished {self.name}")
-        logger.info(f"Memory usage after task: {mem_after / (1024 * 1024)} MB")
-
-        return {
-            "cdn_url": cloudfront_podcast_url,    
-            "transcript": transcript,
-            "original_text": original_text,
-            "error": None
-        }
-    
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
     except Exception as e:
-        logger.exception(f"Task {self.name} failed with exception: {e}")
-        raise # ask gpt how to do this
+        logger.error(f"Error saving conversation: {str(e)}", exc_info=True)
+        raise
+
+def fetch_chat_history(conversation_id):
+    """
+    Fetches the chat history for a given conversation_id.
+    Returns a list of messages sorted by created_at.
+    """
+    try: 
+        response = supabase_client.table("message").select("*").eq("conversation_id", conversation_id).order("created_at").execute()
+        print("Successful fetching chat history from Supabase !!")
+        return response.data
+    except Exception as e:
+        raise Exception(f"Error fetching chat history: {e}")
+
+def format_chat_history(chat_history):
+    """
+    Formats the chat history into a conversational string for the LLM prompt.
+    """
+    formatted_history = ""
+    for message in chat_history:
+        role = message["message_role"]
+        content = message["message_content"]
+        formatted_history += f"{role.capitalize()}: {content}\n"
+    return formatted_history
+
+def trim_context_length(full_context, query, relevant_chunks, model_name, max_tokens):
+    # Estimate token length
+    def count_tokens(text, model_name):
+        import tiktoken
+        tokenizer = tiktoken.encoding_for_model(model_name)
+        return len(tokenizer.encode(text))
