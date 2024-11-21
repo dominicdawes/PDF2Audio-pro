@@ -2,6 +2,7 @@ from celery import Celery, Task
 from tasks.celery_app import celery_app  # Import the Celery app instance (see celery_app.py for LocalHost config)
 import logging
 import os
+from langchain_core.load import dumpd, dumps, load, loads
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.schema import AIMessage
@@ -70,7 +71,12 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         response = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
 
         # Step 4.1: Extract the message content from the AIMessage object
-        json_string = json.dumps(response)
+        json_dict = dumpd(answer['answer'])
+        try:
+            json_content = json_dict['kwargs']['content']  # Adjust keys based on actual nesting
+            print("\nContent:", json_content)
+        except KeyError as e:
+            print(f"KeyError: {e} - Make sure the key exists in the structure.")
 
         # Step 5: Save query and response in message history
         save_conversation(conversation_id, user_id, query, response)
