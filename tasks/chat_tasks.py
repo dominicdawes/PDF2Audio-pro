@@ -9,6 +9,7 @@ from supabase import create_client, Client
 from utils.supabase_utils import insert_document_supabase_record, insert_mp3_supabase_record, insert_vector_supabase_record, supabase_client
 from datetime import datetime, timezone
 import uuid
+import json
 
 # from celery import Celery, chain
 # import logging
@@ -69,17 +70,14 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         response = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
 
         # Step 4.1: Extract the message content from the AIMessage object
-        if isinstance(response['answer'], AIMessage):
-            answer_text = response['answer'].content  # Extract the actual text from the AIMessage
-        else:
-            answer_text = str(response)  # Fallback in case it's not an AIMessage
+        json_string = json.dumps(response)
 
         # Step 5: Save query and response in message history
         save_conversation(conversation_id, user_id, query, response)
 
         # Api call returns the answer and metadata for UI formatting
         return {
-            "answer": answer_text,
+            "answer": json_string['content'],
             "message_role": "assistant"
         }
     except Exception as e:
