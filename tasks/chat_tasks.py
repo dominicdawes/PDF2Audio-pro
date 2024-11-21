@@ -66,16 +66,16 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         relevant_chunks = fetch_relevant_chunks(query_embedding, document_ids)
 
         # Step 4: Generate the answer using RAG
-        answer = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
+        response = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
 
         # Step 4.1: Extract the message content from the AIMessage object
-        if isinstance(answer, AIMessage):
-            answer_text = answer.content  # Extract the actual text from the AIMessage
+        if isinstance(response['answer'], AIMessage):
+            answer_text = response['answer'].content  # Extract the actual text from the AIMessage
         else:
-            answer_text = str(answer)  # Fallback in case it's not an AIMessage
+            answer_text = str(response)  # Fallback in case it's not an AIMessage
 
         # Step 5: Save query and response in message history
-        save_conversation(conversation_id, user_id, query, answer)
+        save_conversation(conversation_id, user_id, query, response)
 
         # Api call returns the answer and metadata for UI formatting
         return {
@@ -185,8 +185,32 @@ def format_chat_history(chat_history):
     return formatted_history
 
 def trim_context_length(full_context, query, relevant_chunks, model_name, max_tokens):
-    # Estimate token length
+    # Ensure formatted_history and chunk_context are initialized
+    formatted_history = ""
+    chunk_context = " ".join([chunk["content"] for chunk in relevant_chunks])
+
+    # Helper function to estimate token length
     def count_tokens(text, model_name):
         import tiktoken
         tokenizer = tiktoken.encoding_for_model(model_name)
         return len(tokenizer.encode(text))
+
+    # Dynamically trim context to fit within token limit
+    while count_tokens(full_context, model_name) > max_tokens:
+        if 'chat_history' in locals() and len(chat_history) > 1:
+            chat_history = chat_history[1:]  # Remove the oldest message
+            formatted_history = format_chat_history(chat_history)
+        elif len(relevant_chunks) > 1:
+            relevant_chunks.pop()  # Remove the least relevant chunk
+            chunk_context = " ".join([chunk["content"] for chunk in relevant_chunks])
+        else:
+            break  # Cannot reduce further
+
+    # Safeguard: Ensure formatted_history and chunk_context are properly defined
+    if not formatted_history:
+        formatted_history = "No prior chat history available."
+
+    if not chunk_context:
+        chunk_context = "No relevant context found."
+
+    return f"{formatted_history}\nRelevant Context:\n{chunk_context}\n\nUser Query: {query}\nAssistant:"
