@@ -49,7 +49,8 @@ import tasks.generate_tasks
 # # Optional: ASK GPT ABOUT IT'S PURPOSE: Automatically discover tasks in specified modules
 # # This allows Celery to find tasks in modules like `generate_tasks.py` and `other_tasks.py`
 celery_app.autodiscover_tasks(['tasks'])
-celery_app.autodiscover_tasks(['tasks.generate_tasks'])
+# celery_app.autodiscover_tasks(['tasks.generate_tasks'])
+# celery_app.autodiscover_tasks(['tasks.chat_tasks'])
 
 # Sanity check print statement
 print("Registered tasks:")
