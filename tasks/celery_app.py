@@ -45,6 +45,7 @@ celery_app.conf.update(
 
 # Import tasks to register them with Celery (THIS WORKS!!!)
 import tasks.generate_tasks
+import tasks.chat_tasks
 
 # # Optional: ASK GPT ABOUT IT'S PURPOSE: Automatically discover tasks in specified modules
 # # This allows Celery to find tasks in modules like `generate_tasks.py` and `other_tasks.py`
