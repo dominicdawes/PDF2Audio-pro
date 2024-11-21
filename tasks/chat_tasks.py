@@ -70,7 +70,11 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         # Step 5: Save query and response in message history
         save_conversation(conversation_id, user_id, query, answer)
 
-        return {"answer": answer}
+        # Api call returns the answer and metadata for UI formatting
+        return {
+            "answer": answer,
+            "message_role": "assistant"
+        }
     except Exception as e:
         logger.error(f"RAG Chat Task failed: {str(e)}", exc_info=True)
         raise self.retry(exc=e)
