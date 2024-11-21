@@ -154,7 +154,9 @@ async def pdf_to_dialogue_transcript(request: PDFRequest, background_tasks: Back
     try:
         # Enqueue the Celery task for dialogue generation
         print(f"API DEBUG: {request.files}")
-        task = generate_dialogue_only_task.apply_async(args=[request.files])
+        task = generate_dialogue_only_task.apply_async(
+            args=[request.files]
+        )
         
         # Return the task ID to the client
         return {"task_id": task.id}
