@@ -4,6 +4,7 @@ import logging
 import os
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.prompts import PromptTemplate
+from langchain.schema import AIMessage
 from supabase import create_client, Client
 from utils.supabase_utils import insert_document_supabase_record, insert_mp3_supabase_record, insert_vector_supabase_record, supabase_client
 from datetime import datetime, timezone
@@ -67,12 +68,18 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         # Step 4: Generate the answer using RAG
         answer = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
 
+        # Step 4.1: Extract the message content from the AIMessage object
+        if isinstance(answer, AIMessage):
+            answer_text = answer.content  # Extract the actual text from the AIMessage
+        else:
+            answer_text = str(answer)  # Fallback in case it's not an AIMessage
+
         # Step 5: Save query and response in message history
         save_conversation(conversation_id, user_id, query, answer)
 
         # Api call returns the answer and metadata for UI formatting
         return {
-            "answer": answer,
+            "answer": answer_text,
             "message_role": "assistant"
         }
     except Exception as e:
