@@ -218,20 +218,20 @@ async def get_task_status(task_id: str):
         if task_result.state == 'PENDING':
             return {
                 "task_id": task_id,
-                "status": "Pending",
+                "status": "PENDING",
                 "elapsed_time": elapsed_time
             }
         elif task_result.state == 'SUCCESS':
             return {
                 "task_id": task_id,
-                "status": "Success",
+                "status": "SUCCESS",
                 "result": task_result.result,
                 "elapsed_time": elapsed_time
             }
         elif task_result.state == 'FAILURE':
             return {
                 "task_id": task_id,
-                "status": "Failure",
+                "status": "FAILURE",
                 "error": str(task_result.result),
                 "elapsed_time": elapsed_time
             }
