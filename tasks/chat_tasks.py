@@ -71,7 +71,7 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         response = generate_rag_answer(query, conversation_id, relevant_chunks, model_name='gpt-4o-mini')
 
         # Step 4.1: Extract the message content from the AIMessage object
-        json_dict = dumpd(response['answer'])
+        json_dict = dumpd(response)
         try:
             json_content = json_dict['kwargs']['content']  # Adjust keys based on actual nesting
             print("\nContent:", json_content)
