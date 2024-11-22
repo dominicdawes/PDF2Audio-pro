@@ -42,8 +42,8 @@ def insert_mp3_supabase_record(
         # Check if the response contains data
         if response.data:
             # Successful insertion
-            print("Successful Supabase row insert")
-            return response.data
+            print("Successful Supabase 'podcast' row insert")
+            return response.data[0]["id"]  # Return podcast ID... prior version is just response.data
         else:
             # If there's no data, check for errors
             raise Exception(f"Supabase error: {response.error}")

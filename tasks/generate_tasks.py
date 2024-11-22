@@ -174,7 +174,7 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         cloudfront_podcast_url = get_cloudfront_url(s3_mp3_object_key)
 
         # Insert podcast into Supabase
-        insert_mp3_supabase_record(
+        media_id = insert_mp3_supabase_record(
             client=supabase_client,
             table_name="media_uploads",
             podcast_title="My Podcast", 
@@ -192,6 +192,8 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
         logger.info(f"Memory usage after task: {mem_after / (1024 * 1024)} MB")
 
         return {
+            'media_id': media_id,
+            "media_name": "Podcast Uploaded from Celery Worker...",
             "cdn_url": cloudfront_podcast_url,    
             "transcript": transcript,
             "original_text": original_text,
