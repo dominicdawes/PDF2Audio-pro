@@ -62,7 +62,8 @@ class PDFRequest(BaseModel):
 
 # Pydantic model for the response
 class PDFResponse(BaseModel):
-    task_id: str
+    audio_task_id: str
+    embedding_task_id: str
 
 # RAG Query pydantic model
 class RAGRequest(BaseModel):
