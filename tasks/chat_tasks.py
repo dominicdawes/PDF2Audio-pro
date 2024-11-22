@@ -79,13 +79,19 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
             print(f"KeyError: {e} - Make sure the key exists in the structure.")
 
         # Step 5: Save query and response in message history
-        save_conversation(conversation_id, user_id, query, response)
+        save_conversation(conversation_id, user_id, query, answer=json_content)
 
         # Api call returns the answer and metadata for UI formatting
-        return {
+        json_response = {}
+        try:
+            json_response = {
             "answer": json_content,
             "message_role": "assistant"
-        }
+            }
+        except KeyError as e:
+            print(f"KeyError: {e} - Make sure the key exists in the structure.")
+        
+        return json_response
     except Exception as e:
         logger.error(f"RAG Chat Task failed: {str(e)}", exc_info=True)
         raise self.retry(exc=e)
