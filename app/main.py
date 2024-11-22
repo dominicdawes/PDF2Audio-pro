@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any
 import uuid
 from utils.pdf_utils import extract_text_from_pdf
-from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task, process_pdf_task
+from tasks.generate_tasks import validate_and_generate_audio_task, generate_dialogue_only_task, process_pdf_task, insert_sources_media_association_task
 from tasks.generate_tasks import addition_task
 from tasks.chat_tasks import rag_chat_task
+from celery import chain, chord, group
 from celery.result import AsyncResult
 
 
@@ -131,20 +132,55 @@ async def celery_test_addition(request: AdditionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint to process PDF and generate audio
+
+# [Deprecated No Chaining] 
+# @app.post("/pdf-to-dialogue/", response_model=PDFResponse)
+# async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks):
+#     ''' This is the main function that is called from WeWeb '''
+#     try:
+#         # Trigger the audio generation task asynchronously... added to queue
+#         audio_task = validate_and_generate_audio_task.apply_async(args=[request.files, request.metadata])
+        
+#         # Trigger the document embedding task asynchronously... added to queue
+#         embedding_task = process_pdf_task.apply_async(args=[request.files, request.metadata])
+
+#         # Return the task IDs to the client
+#         return {
+#             "audio_task_id": audio_task.id,
+#             "embedding_task_id": embedding_task.id
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/pdf-to-dialogue/", response_model=PDFResponse)
 async def pdf_to_dialogue(request: PDFRequest, background_tasks: BackgroundTasks):
-    ''' This is the main function that is called from WeWeb '''
     try:
-        # Trigger the audio generation task asynchronously... added to queue
-        audio_task = validate_and_generate_audio_task.apply_async(args=[request.files, request.metadata])
-        
-        # Trigger the document embedding task asynchronously... added to queue
-        embedding_task = process_pdf_task.apply_async(args=[request.files, request.metadata])
+        # Create signatures for the tasks
+        process_pdf_task_signature = process_pdf_task.s(request.files, request.metadata)
+        validate_and_generate_audio_task_signature = validate_and_generate_audio_task.s(request.files, request.metadata)
+
+        # Create the group
+        task_group = group(
+            process_pdf_task_signature,
+            validate_and_generate_audio_task_signature
+        )
+
+        # Create the chord with the group and callback
+        task_chord = chord(task_group)(insert_sources_media_association_task.s())
+
+        # The result of the chord is the AsyncResult of the callback task
+        chord_result = task_chord
+
+        # Get task IDs
+        process_pdf_task_id = chord_result.parent.results[0].id
+        validate_and_generate_audio_task_id = chord_result.parent.results[1].id
+        insert_task_id = chord_result.id
 
         # Return the task IDs to the client
         return {
-            "audio_task_id": audio_task.id,
-            "embedding_task_id": embedding_task.id
+            "audio_task_id": validate_and_generate_audio_task_id,
+            "embedding_task_id": process_pdf_task_id,
+            "insert_task_id": insert_task_id,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -170,17 +206,15 @@ async def get_task_status(task_id: str):
     try:
         task_result = AsyncResult(task_id)
 
-        # Safely retrieve task metadata, if available
+        # Retrieve task metadata
         task_meta = task_result.info if isinstance(task_result.info, dict) else {}
         start_time_str = task_meta.get('start_time')
         elapsed_time = None
 
-        # Calculate elapsed time if `start_time` is available
         if start_time_str:
             start_time = datetime.fromisoformat(start_time_str)
             elapsed_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
-        # Determine task status and return relevant data
         if task_result.state == 'PENDING':
             return {
                 "task_id": task_id,
@@ -197,7 +231,7 @@ async def get_task_status(task_id: str):
         elif task_result.state == 'FAILURE':
             return {
                 "task_id": task_id,
-                "status": "Failed",
+                "status": "Failure",
                 "error": str(task_result.result),
                 "elapsed_time": elapsed_time
             }
@@ -207,6 +241,9 @@ async def get_task_status(task_id: str):
                 "status": task_result.state,
                 "elapsed_time": elapsed_time
             }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
     except Exception as e:
         # Handle any unexpected exceptions

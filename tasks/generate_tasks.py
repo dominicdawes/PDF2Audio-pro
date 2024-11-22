@@ -64,6 +64,7 @@ def process_pdf_task(self, files, metadata=None):
         return {"error": "Please upload at least one PDF file before processing."}
 
     uploaded_documents = []
+    source_ids = [] # used in chained task
 
     for file in files:
         try:
@@ -95,6 +96,9 @@ def process_pdf_task(self, files, metadata=None):
                 uploaded_by=metadata.get("uploaded_by", "")
             )
 
+            # Append to source_ids list
+            source_ids.append(source_id)
+
             uploaded_documents.append({
                 "source_id": source_id,
                 "pdf_url": cloudfront_document_url,
@@ -111,8 +115,11 @@ def process_pdf_task(self, files, metadata=None):
     # Trigger the embedding task for each document
     for doc in uploaded_documents:
         chunk_and_embed_task.delay(doc["pdf_url"], doc["source_id"])      # enqueue to Celery task queue
+    
+    # Logging message
+    logger.info(" 'message' : PDF upload and record creation completed. Embedding tasks started.")
 
-    return {"message": "PDF upload and record creation completed. Embedding tasks started."}
+    return source_ids 
 
 @celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
 def validate_and_generate_audio_task(self, files, metadata=None, instructions_key='podcast', *args):
@@ -203,6 +210,30 @@ def validate_and_generate_audio_task(self, files, metadata=None, instructions_ke
     except Exception as e:
         logger.exception(f"Task {self.name} failed with exception: {e}")
         raise # ask gpt how to do this
+
+@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
+def insert_sources_media_association_task(self, task_results):
+    """
+    Celery task to insert a row in `sources_media_association` table. Callback task to accept 
+    the list of results from the group tasks. The results will be in the order the tasks were defined in the group.
+    
+    - task_results: (list) containing results from process_pdf_task and validate_and_generate_audio_task
+    """
+    # Unpack the results
+    source_ids = task_results[0]
+    media_result = task_results[1]
+    media_id = media_result.get('media_id')
+
+    try:
+        for source_id in source_ids:
+            supabase_client.table('sources_media_association').insert({
+                'source_id': source_id,
+                'media_id': media_id
+            }).execute()
+        logger.info(f"Successfully linked source_ids {source_ids} with media_id {media_id}")
+    except Exception as e:
+        logger.error(f"Failed to insert into sources_media_association: {e}")
+        raise
 
 @celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
 def validate_and_generate_audio_task_deprecated(self, files, metadata=None, instructions_key='podcast', *args):

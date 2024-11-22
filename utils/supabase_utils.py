@@ -85,11 +85,6 @@ def insert_vector_supabase_record(client, table_name, source_id, content, metada
     
 def insert_conversation_supabase_record(client, table_name, user_id, conversation_id, message_role, message_content, created_at):
     try:
-        # response = client.table(table_name).insert({
-        #     "conversation_id": content,
-        #     "message": messages,
-        # }).execute()
-
         response = client.table(table_name).insert({
             "user_id": user_id,
             "conversation_id": conversation_id,
