@@ -87,7 +87,7 @@ def process_pdf_task(self, files, metadata=None):
             cloudfront_document_url = get_cloudfront_url(s3_document_key)
 
             # Insert the document source record into Supabase
-            document_id = insert_document_supabase_record(
+            source_id = insert_document_supabase_record(
                 client=supabase_client,
                 table_name="document_sources",
                 cdn_url=cloudfront_document_url,
@@ -96,7 +96,7 @@ def process_pdf_task(self, files, metadata=None):
             )
 
             uploaded_documents.append({
-                "document_id": document_id,
+                "source_id": source_id,
                 "pdf_url": cloudfront_document_url,
                 "file_path": file_path
             })
@@ -110,7 +110,7 @@ def process_pdf_task(self, files, metadata=None):
 
     # Trigger the embedding task for each document
     for doc in uploaded_documents:
-        chunk_and_embed_task.delay(doc["pdf_url"], doc["document_id"])      # enqueue to Celery task queue
+        chunk_and_embed_task.delay(doc["pdf_url"], doc["source_id"])      # enqueue to Celery task queue
 
     return {"message": "PDF upload and record creation completed. Embedding tasks started."}
 
@@ -350,7 +350,7 @@ def validate_and_generate_audio_task_deprecated(self, files, metadata=None, inst
         # }
 
 @celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
-def chunk_and_embed_task(self, pdf_url, document_id, chunk_size=1000, chunk_overlap=100):
+def chunk_and_embed_task(self, pdf_url, source_id, chunk_size=1000, chunk_overlap=100):
     """
     Celery task to download, chunk, embed, and store embeddings of a PDF in Supabase.
     """
@@ -381,7 +381,7 @@ def chunk_and_embed_task(self, pdf_url, document_id, chunk_size=1000, chunk_over
                 insert_vector_supabase_record(
                     client=supabase_client,
                     table_name="document_vector_store",
-                    document_id=document_id,
+                    source_id=source_id,
                     content=chunk_text,
                     metadata={
                         "source": pdf_url,

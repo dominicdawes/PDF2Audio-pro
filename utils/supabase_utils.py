@@ -72,9 +72,9 @@ def insert_document_supabase_record(client, table_name, cdn_url, content_tags, u
     except Exception as e:
         raise Exception(f"Failed to insert into Supabase: {e}")
 
-def insert_vector_supabase_record(client, table_name, document_id, content, metadata, embedding):
+def insert_vector_supabase_record(client, table_name, source_id, content, metadata, embedding):
     response = client.table(table_name).insert({
-        "document_id": document_id,
+        "source_id": source_id,
         "content": content,
         "metadata": json.dumps(metadata),
         "embedding": embedding
