@@ -7,7 +7,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.schema import AIMessage
 from supabase import create_client, Client
-from utils.supabase_utils import insert_document_supabase_record, insert_mp3_supabase_record, insert_vector_supabase_record, supabase_client
+from utils.supabase_utils import insert_conversation_supabase_record, supabase_client
 from datetime import datetime, timezone
 import uuid
 import json
@@ -152,21 +152,41 @@ def save_conversation(conversation_id, user_id, query, answer):
     Save the user's query and the RAG response to the conversation history.
     """
     try:
-        supabase_client.table("message").insert({
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "message_role": "user",
-            "message_content": query,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        insert_conversation_supabase_record(
+            supabase_client, 
+            table_name="message", 
+            user_id=user_id, 
+            conversation_id=conversation_id, 
+            message_role="user",
+            message_content=query,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
 
-        supabase_client.table("message").insert({
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "message_role": "assistant",
-            "message_content": answer,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        insert_conversation_supabase_record(
+            supabase_client, 
+            table_name="message", 
+            user_id=user_id, 
+            conversation_id=conversation_id, 
+            message_role="assistant",
+            message_content=answer,
+            created_at=datetime.now(timezone.utc).isoformat()
+        )
+
+        # supabase_client.table("message").insert({
+        #     "user_id": user_id,
+        #     "conversation_id": conversation_id,
+        #     "message_role": "user",
+        #     "message_content": query,
+        #     "created_at": datetime.now(timezone.utc).isoformat(),
+        # }).execute()
+
+        # supabase_client.table("message").insert({
+        #     "user_id": user_id,
+        #     "conversation_id": conversation_id,
+        #     "message_role": "assistant",
+        #     "message_content": answer,
+        #     "created_at": datetime.now(timezone.utc).isoformat(),
+        # }).execute()
     except Exception as e:
         logger.error(f"Error saving conversation: {str(e)}", exc_info=True)
         raise

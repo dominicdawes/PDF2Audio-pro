@@ -73,19 +73,29 @@ def insert_document_supabase_record(client, table_name, cdn_url, content_tags, u
         raise Exception(f"Failed to insert into Supabase: {e}")
 
 def insert_vector_supabase_record(client, table_name, source_id, content, metadata, embedding):
-    response = client.table(table_name).insert({
-        "source_id": source_id,
-        "content": content,
-        "metadata": json.dumps(metadata),
-        "embedding": embedding
-    }).execute()
-    if response.error:
-        raise Exception(f"Error inserting vector record: {response.error}")
+    try:
+        response = client.table(table_name).insert({
+            "source_id": source_id,
+            "content": content,
+            "metadata": json.dumps(metadata),
+            "embedding": embedding
+        }).execute()
+    except Exception as e:
+        raise Exception(f"Failed to insert into Supabase vector-store: {e}")
     
-def insert_conversation_supabase_record(client, table_name, messages):
-    response = client.table(table_name).insert({
-        "conversation_id": content,
-        "message": messages,
-    }).execute()
-    if response.error:
-        raise Exception(f"Error saving messages: {response.error}")
+def insert_conversation_supabase_record(client, table_name, user_id, conversation_id, message_role, message_content, created_at):
+    try:
+        # response = client.table(table_name).insert({
+        #     "conversation_id": content,
+        #     "message": messages,
+        # }).execute()
+
+        response = client.table(table_name).insert({
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "message_role": message_role,
+            "message_content": message_content,
+            "created_at": created_at,
+        }).execute()
+    except Exception as e:
+        raise Exception(f"Error saving messages: {e}")
