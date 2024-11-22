@@ -57,7 +57,7 @@ def process_pdf_task(self, files, metadata=None):
     # === RENDER RESOURCE LOGGING (MB) === #
     process = psutil.Process(os.getpid())
     mem_before = process.memory_info().rss
-    logger.info(f"Starting {self.name} with args: {args}")
+    logger.info(f"Starting {self.name} with files: {files} and metadata: {metadata}")
     logger.info(f"Memory usage before task: {mem_before / (1024 * 1024)} MB")
 
     if not files:
