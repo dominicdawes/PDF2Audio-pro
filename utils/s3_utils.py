@@ -4,6 +4,8 @@ import boto3
 from botocore.exceptions import ClientError
 from botocore.client import Config
 from dotenv import load_dotenv
+from datetime import datetime, timedelta, timezone
+
 
 # Load environment variables
 load_dotenv()
@@ -23,7 +25,24 @@ s3_bucket_name = os.getenv('AWS_S3_BUCKET_NAME')
 def upload_to_s3(client, file_path, s3_object_key, bucket_name=s3_bucket_name):
     """Uploads a file to the S3 bucket and returns the file URL."""
     try:
-        client.upload_file(file_path, bucket_name, s3_object_key)
+
+        # Calculate the Expires header (1 year from today)
+        expires_date = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+
+        # set pdf content type
+        content_type = "application/pdf" if file_path.endswith(".pdf") else "binary/octet-stream"
+
+        client.upload_file(
+            file_path, 
+            bucket_name, 
+            s3_object_key,
+            ExtraArgs={
+                'ContentType': content_type,                    # Set Content-Type metadata
+                "ContentDisposition": "inline",                 # inline display for preview
+                "CacheControl": "public, max-age=31536000",     # Cache for 1 year
+                "Expires": expires_date
+            }
+        )
         return f"https://{bucket_name}.s3.amazonaws.com/{s3_object_key}"
     except Exception as e:
         raise Exception(f"Failed to upload to S3: {e}")
