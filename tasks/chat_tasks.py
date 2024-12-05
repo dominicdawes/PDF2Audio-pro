@@ -74,7 +74,7 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids):
         json_dict = dumpd(response)
         try:
             json_content = json_dict['kwargs']['content']  # Adjust keys based on actual nesting
-            print("\nContent:", json_content)
+            # print("\nContent:", json_content)
         except KeyError as e:
             print(f"KeyError: {e} - Make sure the key exists in the structure.")
 

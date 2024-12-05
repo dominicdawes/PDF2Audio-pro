@@ -160,8 +160,8 @@ def generate_audio(
         user_feedback_processed = "<requested_improvements>" + user_feedback_processed + "\n\n" + instruction_improve + "</requested_improvements>"
     
     if debug:
-        logger.info (edited_transcript_processed)
-        logger.info (user_feedback_processed)
+        logger.info(edited_transcript_processed)
+        logger.info(user_feedback_processed)
     
     # Generate the dialogue using the LLM
     llm_output = generate_dialogue(
