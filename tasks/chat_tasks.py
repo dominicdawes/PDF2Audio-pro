@@ -43,9 +43,9 @@ class BaseTaskWithRetry(Task):
     retry_jitter = True
 
 @celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
-def rag_chat_task(self, user_id, conversation_id, query, document_ids):
+def rag_chat_task(self, user_id, conversation_id, query, document_ids, media_id):
     """
-    Celery task for handling RAG (Retrieval-Augmented Generation) chatbot logic.
+    MAIN Celery task for handling RAG (Retrieval-Augmented Generation) chatbot logic.
 
     example json body from the front-end
     {
@@ -104,6 +104,7 @@ def create_new_conversation(user_id, document_ids):
         "user_id": user_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "document_ids": document_ids,
+        #"media_id":media_id      ...needs to be here i believe
     }
     try:
         response = supabase_client.table("conversations").insert(new_conversation).execute()

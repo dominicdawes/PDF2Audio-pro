@@ -72,6 +72,7 @@ class RAGRequest(BaseModel):
     conversation_id: str
     query: str
     document_ids: List[str]
+    media_id: str
 
 # ======== TEST ENDPOINTS ======== #
 
@@ -259,7 +260,8 @@ async def rag_chat(request: RAGRequest):
             request.user_id,
             request.conversation_id,
             request.query,
-            request.document_ids
+            request.document_ids,
+            request.media_id
         ])
         
         # Return the task ID to the client
