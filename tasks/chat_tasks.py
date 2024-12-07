@@ -58,7 +58,7 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids, media_id)
     try:
         # Step 1: Handle first-time chat session (create new conversation if needed)
         if not conversation_id:
-            conversation_id = create_new_conversation(user_id, document_ids)
+            conversation_id = create_new_conversation(user_id, document_ids, media_id)
 
         # Step 2: Vectorize the query
         embedding_model = OpenAIEmbeddings()
@@ -96,7 +96,7 @@ def rag_chat_task(self, user_id, conversation_id, query, document_ids, media_id)
         logger.error(f"RAG Chat Task failed: {str(e)}", exc_info=True)
         raise self.retry(exc=e)
 
-def create_new_conversation(user_id, document_ids):
+def create_new_conversation(user_id, document_ids, media_id):
     """
     Create a new conversation in the `conversations` table.
     """
@@ -104,7 +104,7 @@ def create_new_conversation(user_id, document_ids):
         "user_id": user_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "document_ids": document_ids,
-        #"media_id":media_id      ...needs to be here i believe
+        "media_id":media_id                     # ...needs to be here i believe
     }
     try:
         response = supabase_client.table("conversations").insert(new_conversation).execute()
